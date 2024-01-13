@@ -1,0 +1,79 @@
+- name: Create an EC2 instance
+  hosts: localhost
+  gather_facts: no
+  vars:
+    instance_type: t2.micro
+    ami: ami-0233214e13e500f77 # EU Frankfurt HVM (SSD) EBS-Backed 64-bit
+    region: eu-central-1
+    keypair: mykeypair # insert your key pair
+    security_group: default # or insert your security group
+  tasks:
+    - name: Launch an EC2 instance
+      amazon.aws.ec2_instance:
+        instance_type: "{{ instance_type }}"
+        image_id: "{{ ami }}"
+        region: "{{ region }}"
+        key_name: "{{ keypair }}"
+        group: "{{ security_group }}"
+        wait: yes
+      register: ec2
+
+    - name: Print the public IP address of the instance
+      debug:
+        var: ec2.instances[0].public_ip_address
+
+    - name: Open port 22
+      amazon.aws.ec2_group:
+        name: "{{ security_group }}"
+        description: "Allow SSH traffic"
+        vpc_id: vpc-12345678 # replace with your vpc
+        region: "{{ region }}"
+        rules:
+          - proto: tcp
+            from_port: 22
+            to_port: 22
+            cidr_ip: 0.0.0.0/0
+
+    - name: Install Nginx
+      become: true
+      apt:
+        name: nginx
+        state: present
+
+    - name: Start Nginx service
+      service:
+        name: nginx
+        state: started
+
+    - name: Create index.html file
+      copy:
+        content: |
+          <html>
+            <head>
+              <title>Current Time</title>
+            </head>
+            <body onload="startTime()">
+              <h2>Clock</h2>
+
+              <div id="time"></div>
+
+              <script>
+              function startTime() {
+                const today = new Date();
+                let h = today.getHours();
+                let m = today.getMinutes();
+                let s = today.getSeconds();
+                m = checkTime(m);
+                s = checkTime(s);
+                document.getElementById('time').innerHTML =  h + ":" + m + ":" + s;
+                setTimeout(startTime, 1000);
+              }
+
+              function checkTime(i) {
+                if (i < 10) {i = "0" + i};  // add zero in front of numbers < 10
+                return i;
+              }
+              </script>
+            </body>
+          </html>
+        dest: /usr/share/nginx/html/index.html
